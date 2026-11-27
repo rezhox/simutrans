@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Simutrans WebAssembly</title>
+  <style>
+    :root {
+      --bg: #0f141b;
+      --panel: rgba(20, 27, 36, 0.92);
+      --border: #2a3748;
+      --text: #e6edf3;
+      --muted: #93a4b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --ok: #22c55e;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    #topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 6px 12px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      z-index: 20;
+      flex-shrink: 0;
+    }
+
+    #topbar.collapsed {
+      display: none;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.18);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    button, .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: #1a2330;
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    button:hover, .btn:hover {
+      background: #243041;
+      border-color: #3d4f68;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: var(--accent-hover);
+    }
+
+    #sync-status {
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 4px;
+    }
+
+    #stage {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+      image-rendering: pixelated;
+    }
+
+    #show-bar-btn {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      z-index: 25;
+      display: none;
+      opacity: 0.75;
+    }
+
+    #show-bar-btn.visible {
+      display: inline-block;
+    }
+
+    #loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: radial-gradient(circle at center, #182230 0%, #0b0f15 100%);
+      z-index: 30;
+      padding: 24px;
+      text-align: center;
+    }
+
+    #loading-overlay.hidden {
+      display: none;
+    }
+
+    .progress-wrap {
+      width: min(420px, 85vw);
+      height: 10px;
+      background: #1f2937;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    #progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #38bdf8);
+      transition: width 0.15s ease;
+    }
+
+    #status-text {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #saves-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 40;
+      padding: 16px;
+    }
+
+    #saves-modal.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: min(500px, 95vw);
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      background: #151c26;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+
+    .modal-body {
+      padding: 14px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .save-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #0f141b;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="topbar">
+      <div class="brand">
+        <span>Simutrans</span>
+        <span class="badge">WebAssembly · pak64</span>
+      </div>
+      <div class="actions">
+        <span id="sync-status">Saves: ready</span>
+        <button id="btn-sync" title="Persist saves and settings to browser IndexedDB">Sync Saves</button>
+        <button id="btn-saves" title="Import or export .sve savegames">Save Files</button>
+        <button id="btn-fullscreen" title="Toggle fullscreen">Fullscreen</button>
+        <button id="btn-hide-bar" title="Hide top bar">Hide Bar</button>
+      </div>
+    </div>
+
+    <button id="show-bar-btn">Show Bar</button>
+
+    <div id="stage">
+      <canvas id="canvas" tabindex="-1"></canvas>
+      <div id="loading-overlay">
+        <div style="font-size: 22px; font-weight: 700;">Simutrans</div>
+        <div class="progress-wrap"><div id="progress-bar"></div></div>
+        <div id="status-text">Initializing WebAssembly runtime...</div>
+        <div class="muted">Right-click drag pans the map · Mouse wheel zooms · Saves persist in IndexedDB</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="saves-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span>Browser Savegames (/userdir/save)</span>
+        <button id="btn-close-saves">Close</button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <label class="btn primary" for="upload-sve">Import .sve File</label>
+          <input id="upload-sve" type="file" accept=".sve" style="display:none" />
+          <span class="muted" style="margin-left: 8px;">Uploaded saves appear in Simutrans Load dialog</span>
+        </div>
+        <div id="saves-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const stage = document.getElementById('stage');
+    const overlay = document.getElementById('loading-overlay');
+    const progressBar = document.getElementById('progress-bar');
+    const statusText = document.getElementById('status-text');
+    const syncStatus = document.getElementById('sync-status');
+    const topbar = document.getElementById('topbar');
+    const showBarBtn = document.getElementById('show-bar-btn');
+    const savesModal = document.getElementById('saves-modal');
+    const savesList = document.getElementById('saves-list');
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    function getInitialCanvasSize() {
+      const rect = stage.getBoundingClientRect();
+      const w = Math.max(640, Math.floor(rect.width || window.innerWidth));
+      const h = Math.max(480, Math.floor(rect.height || (window.innerHeight - 38)));
+      return { w, h };
+    }
+
+    const initialSize = getInitialCanvasSize();
+    canvas.width = initialSize.w;
+    canvas.height = initialSize.h;
+
+    let idbfsReady = false;
+    let totalDeps = 0;
+
+    function syncToIndexedDB(quiet = false) {
+      if (!idbfsReady || typeof FS === 'undefined') return;
+      if (!quiet) syncStatus.textContent = 'Saves: syncing...';
+      FS.syncfs(false, (err) => {
+        if (err) {
+          console.error('IDBFS sync error:', err);
+          syncStatus.textContent = 'Saves: sync error';
+        } else {
+          const now = new Date().toLocaleTimeString();
+          syncStatus.textContent = quiet ? `Saves: synced (${now})` : `Saves: saved (${now})`;
+        }
+      });
+    }
+
+    document.getElementById('btn-sync').addEventListener('click', () => syncToIndexedDB(false));
+    document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.();
+      } else {
+        document.exitFullscreen?.();
+      }
+    });
+    document.getElementById('btn-hide-bar').addEventListener('click', () => {
+      topbar.classList.add('collapsed');
+      showBarBtn.classList.add('visible');
+    });
+    showBarBtn.addEventListener('click', () => {
+      topbar.classList.remove('collapsed');
+      showBarBtn.classList.remove('visible');
+    });
+
+    function refreshSavesList() {
+      savesList.innerHTML = '';
+      if (typeof FS === 'undefined') return;
+      const saveDir = '/userdir/save';
+      try {
+        const entries = FS.readdir(saveDir).filter((name) => name !== '.' && name !== '..');
+        if (entries.length === 0) {
+          savesList.innerHTML = '<div class="muted">No saved games in /userdir/save yet. Use the in-game Save dialog first or import a .sve file.</div>';
+          return;
+        }
+        for (const name of entries.sort()) {
+          const row = document.createElement('div');
+          row.className = 'save-item';
+          const label = document.createElement('span');
+          label.textContent = name;
+          const dl = document.createElement('button');
+          dl.textContent = 'Download';
+          dl.addEventListener('click', () => {
+            const data = FS.readFile(`${saveDir}/${name}`);
+            const blob = new Blob([data], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          });
+          row.appendChild(label);
+          row.appendChild(dl);
+          savesList.appendChild(row);
+        }
+      } catch (err) {
+        savesList.innerHTML = `<div class="muted">Save directory not initialized yet (${err.message}).</div>`;
+      }
+    }
+
+    document.getElementById('btn-saves').addEventListener('click', () => {
+      refreshSavesList();
+      savesModal.classList.add('open');
+    });
+    document.getElementById('btn-close-saves').addEventListener('click', () => {
+      savesModal.classList.remove('open');
+    });
+    document.getElementById('upload-sve').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file || typeof FS === 'undefined') return;
+      const buf = new Uint8Array(await file.arrayBuffer());
+      try { FS.mkdir('/userdir/save'); } catch (_) {}
+      FS.writeFile(`/userdir/save/${file.name}`, buf);
+      syncToIndexedDB(false);
+      refreshSavesList();
+      e.target.value = '';
+    });
+
+    window.addEventListener('pagehide', () => syncToIndexedDB(true));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') syncToIndexedDB(true);
+    });
+    setInterval(() => syncToIndexedDB(true), 20000);
+
+    var Module = {
+      canvas,
+      arguments: [
+        '-set_basedir', '/simutrans/',
+        '-objects', 'pak/',
+        '-lang', 'en',
+        '-screensize', `${initialSize.w}x${initialSize.h}`
+      ],
+      preRun: [
+        function () {
+          Module.addRunDependency('idbfs-init');
+          try { FS.mkdir('/userdir'); } catch (_) {}
+          FS.mount(IDBFS, {}, '/userdir');
+          FS.syncfs(true, (err) => {
+            if (err) {
+              console.warn('IDBFS initial load warning:', err);
+            } else {
+              idbfsReady = true;
+            }
+            Module.removeRunDependency('idbfs-init');
+          });
+        }
+      ],
+      onRuntimeInitialized: function () {
+        overlay.classList.add('hidden');
+        canvas.focus();
+      },
+      setStatus: function (text) {
+        if (!text) {
+          overlay.classList.add('hidden');
+          return;
+        }
+        statusText.textContent = text;
+        const m = text.match(/([^(]+)\((\d+(?:\.\d+)?)\/(\d+)\)/);
+        if (m) {
+          const pct = Math.min(100, Math.round((parseFloat(m[2]) / parseFloat(m[3])) * 100));
+          progressBar.style.width = `${pct}%`;
+        }
+      },
+      monitorRunDependencies: function (left) {
+        totalDeps = Math.max(totalDeps, left);
+        if (left > 0 && totalDeps > 0) {
+          const pct = Math.min(100, Math.round(((totalDeps - left) / totalDeps) * 100));
+          progressBar.style.width = `${pct}%`;
+        } else if (left === 0) {
+          progressBar.style.width = '100%';
+        }
+      },
+      print: function (text) {
+        console.log('[Simutrans]', text);
+      },
+      printErr: function (text) {
+        console.warn('[Simutrans]', text);
+      }
+    };
+  </script>
+  <script async src="simutrans.js"></script>
+</body>
+</html>

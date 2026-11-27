@@ -1,0 +1,68 @@
+name: Build WebAssembly Port
+
+on:
+  push:
+    branches: [ webassembly, master ]
+  pull_request:
+    branches: [ webassembly, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Stage base assets and pak64
+        run: |
+          mkdir -p pak64-staging preload-simutrans
+          curl -L -o pak64-staging/simupak64-125-0.zip "https://downloads.sourceforge.net/project/simutrans/pak64/125-0/simupak64-125-0.zip"
+          unzip -q pak64-staging/simupak64-125-0.zip -d pak64-staging
+          cp -a simutrans/* preload-simutrans/
+          cp -a pak64-staging/simutrans/pak preload-simutrans/pak
+
+      - name: Configure and build Simutrans WebAssembly
+        run: |
+          emcmake cmake -G Ninja \
+            -B build-wasm \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSIMUTRANS_BACKEND=sdl2 \
+            -DSIMUTRANS_EMSCRIPTEN_PRELOAD_DIR="$PWD/preload-simutrans" \
+            .
+          cmake --build build-wasm -j"$(nproc)"
+
+      - name: Upload WebAssembly build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simutrans-webassembly
+          path: build-wasm/simutrans/
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build-wasm/simutrans/
+
+  deploy-pages:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/webassembly'
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true

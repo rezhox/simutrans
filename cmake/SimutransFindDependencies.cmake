@@ -1,4 +1,46 @@
-if (NOT ANDROID)
+if (EMSCRIPTEN)
+	# Emscripten provides official ports for zlib, bzip2, libpng, freetype, and SDL2.
+	# Create matching imported INTERFACE targets so CMakeLists.txt links uniformly.
+	foreach(_em_target IN ITEMS ZLIB::ZLIB BZip2::BZip2 PNG::PNG Freetype::Freetype SDL2::SDL2)
+		if (NOT TARGET ${_em_target})
+			add_library(${_em_target} INTERFACE IMPORTED)
+		endif ()
+	endforeach ()
+
+	set_target_properties(ZLIB::ZLIB PROPERTIES
+		INTERFACE_COMPILE_OPTIONS "-sUSE_ZLIB=1"
+		INTERFACE_LINK_OPTIONS "-sUSE_ZLIB=1"
+	)
+	set_target_properties(BZip2::BZip2 PROPERTIES
+		INTERFACE_COMPILE_OPTIONS "-sUSE_BZIP2=1"
+		INTERFACE_LINK_OPTIONS "-sUSE_BZIP2=1"
+	)
+	set_target_properties(PNG::PNG PROPERTIES
+		INTERFACE_COMPILE_OPTIONS "-sUSE_LIBPNG=1"
+		INTERFACE_LINK_OPTIONS "-sUSE_LIBPNG=1"
+	)
+	set_target_properties(Freetype::Freetype PROPERTIES
+		INTERFACE_COMPILE_OPTIONS "-sUSE_FREETYPE=1"
+		INTERFACE_LINK_OPTIONS "-sUSE_FREETYPE=1"
+	)
+	set_target_properties(SDL2::SDL2 PROPERTIES
+		INTERFACE_COMPILE_OPTIONS "-sUSE_SDL=2"
+		INTERFACE_LINK_OPTIONS "-sUSE_SDL=2"
+	)
+
+	set(ZLIB_FOUND TRUE)
+	set(BZIP2_FOUND TRUE)
+	set(PNG_FOUND TRUE)
+	set(Freetype_FOUND TRUE)
+	set(SDL2_FOUND TRUE)
+	set(SDL3_FOUND FALSE)
+	set(ZSTD_FOUND FALSE)
+	set(MiniUPNP_FOUND FALSE)
+	set(FluidSynth_FOUND FALSE)
+	set(Fontconfig_FOUND FALSE)
+	set(CCache_FOUND FALSE)
+
+elseif (NOT ANDROID)
 	find_package(CCache)
 	find_package(ZLIB REQUIRED)
 	find_package(BZip2 REQUIRED)
@@ -150,5 +192,7 @@ endif ()
 # so below 24 simthread.h falls back to its own mutex+condvar barrier (the macOS path) and
 # at 24 and above it uses the real pthread barriers. The code was ready for Android all
 # along. Only the build never turned it on.
-set(CMAKE_THREAD_PREFER_PTHREAD ON)
-find_package(Threads)
+if (NOT EMSCRIPTEN)
+	set(CMAKE_THREAD_PREFER_PTHREAD ON)
+	find_package(Threads)
+endif ()

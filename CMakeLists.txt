@@ -221,6 +221,8 @@ if (SIMUTRANS_BACKEND STREQUAL "sdl2")
 		target_link_libraries(simutrans PRIVATE $<TARGET_NAME_IF_EXISTS:SDL2::SDL2main> $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 	elseif (ANDROID)
 		target_link_libraries(simutrans PRIVATE SDL2 SDL2main)
+	elseif (EMSCRIPTEN)
+		target_link_libraries(simutrans PRIVATE SDL2::SDL2)
 	else ()
 		target_link_libraries(simutrans PRIVATE PkgConfig::SDL2)
 	endif ()
@@ -298,7 +300,7 @@ elseif (SIMUTRANS_BACKEND STREQUAL "sdl3")
 		target_link_libraries(simutrans PRIVATE ${Freetype_STATIC_LIBRARIES})
 	elseif (APPLE)
 		target_link_libraries(simutrans PRIVATE ${Freetype_LIBRARIES})
-	elseif (MSVC OR ANDROID)
+	elseif (MSVC OR ANDROID OR EMSCRIPTEN)
 		target_link_libraries(simutrans PRIVATE Freetype::Freetype)
 	else ()
 		target_link_libraries(simutrans PRIVATE PkgConfig::Freetype)
@@ -340,7 +342,7 @@ if (SIMUTRANS_BACKEND STREQUAL "sdl2" OR SIMUTRANS_BACKEND STREQUAL "gdi")
 		target_link_libraries(simutrans PRIVATE ${Freetype_STATIC_LIBRARIES})
 	elseif (APPLE)
 		target_link_libraries(simutrans PRIVATE ${Freetype_LIBRARIES})
-	elseif (MSVC OR ANDROID)
+	elseif (MSVC OR ANDROID OR EMSCRIPTEN)
 		target_link_libraries(simutrans PRIVATE Freetype::Freetype)
 	else ()
 		target_link_libraries(simutrans PRIVATE PkgConfig::Freetype)
@@ -500,10 +502,40 @@ add_custom_target(test
 #
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/SimutransInstall.cmake)
 
+if (EMSCRIPTEN)
+	set(SIMUTRANS_EMSCRIPTEN_PRELOAD_DIR "" CACHE PATH "Directory to preload at /simutrans in the WebAssembly virtual filesystem")
+	set_target_properties(simutrans PROPERTIES
+		OUTPUT_NAME "simutrans"
+		SUFFIX ".js"
+	)
+	target_link_options(simutrans PRIVATE
+		"-sALLOW_MEMORY_GROWTH=1"
+		"-sINITIAL_MEMORY=134217728"
+		"-sSTACK_SIZE=5242880"
+		"-sASYNCIFY=1"
+		"-sASYNCIFY_STACK_SIZE=262144"
+		"-sFORCE_FILESYSTEM=1"
+		"-lidbfs.js"
+		"-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,FS,IDBFS"
+		"-sEXIT_RUNTIME=0"
+	)
+	if (SIMUTRANS_EMSCRIPTEN_PRELOAD_DIR)
+		target_link_options(simutrans PRIVATE
+			"--preload-file" "${SIMUTRANS_EMSCRIPTEN_PRELOAD_DIR}@/simutrans"
+		)
+	endif ()
+	add_custom_command(TARGET simutrans POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			"${CMAKE_CURRENT_SOURCE_DIR}/src/emscripten/index.html"
+			"${CMAKE_BINARY_DIR}/simutrans/index.html"
+		COMMENT "Copying Emscripten web shell index.html"
+	)
+endif ()
+
 #
 # Nettool/Makeobj
 #
-if (NOT ANDROID)
+if (NOT ANDROID AND NOT EMSCRIPTEN)
 	add_subdirectory(src/makeobj EXCLUDE_FROM_ALL)
 	add_subdirectory(src/nettool EXCLUDE_FROM_ALL)
 endif ()

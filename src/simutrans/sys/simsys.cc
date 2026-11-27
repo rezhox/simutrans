@@ -561,6 +561,11 @@ bool dr_set_basedir(const char * base_dir_arg, char * executable_path)
 	}
 #endif
 	if (!found_basedir) {
+#ifdef __EMSCRIPTEN__
+		found_basedir = check_and_set_dir("/simutrans", "Emscripten VFS", env_t::base_dir, "config/simuconf.tab");
+	}
+	if (!found_basedir) {
+#endif
 		// try the installer dir next
 		found_basedir = check_and_set_dir(dr_query_installdir(), "install_dir", env_t::base_dir, "config/simuconf.tab");
 	}
@@ -624,6 +629,8 @@ char const *dr_query_homedir()
 		// no permission
 		tstrncpy(buffer, SDL_GetPrefPath("Simutrans Team", "simutrans"), lengthof(buffer));
 	}
+#elif defined __EMSCRIPTEN__
+	tstrncpy(buffer, "/userdir", lengthof(buffer) - 2);
 #else
 	int maxlen = PATH_MAX + 22;
 	int n;
@@ -676,6 +683,8 @@ char const *dr_query_installdir()
 	sprintf(buffer, "%s/simutrans/paksets", userDir.Path());
 #elif defined __ANDROID__
 	tstrncpy(buffer,SDL_AndroidGetExternalStoragePath(),lengthof(buffer));
+#elif defined __EMSCRIPTEN__
+	tstrncpy(buffer, "/simutrans/paksets", lengthof(buffer) - 2);
 #else
 	int maxlen = PATH_MAX + 22;
 	int n;
@@ -1517,6 +1526,10 @@ bool dr_download_pakset( const char *data_dir, bool portable )
 	}
 	dr_restore_fullscreen(old_fullscreen);
 	return true;
+#elif defined __EMSCRIPTEN__
+	(void)data_dir;
+	(void)portable;
+	return false;
 #else
 	(void)portable;
 
@@ -1629,11 +1642,13 @@ int sysmain(int const argc, char** const argv)
 
 	argv_copy[0] = pathname;
 #elif !defined __BEOS__
-#	if defined __GLIBC__ && !defined __AMIGA__
+#	ifndef __EMSCRIPTEN__
+#		if defined __GLIBC__ && !defined __AMIGA__
 	/* glibc has a non-standard extension */
 	char* buffer2 = 0;
-#	else
+#		else
 	char buffer2[PATH_MAX];
+#		endif
 #	endif
 #	ifndef __AMIGA__
 	char buffer[PATH_MAX];
@@ -1666,9 +1681,11 @@ int sysmain(int const argc, char** const argv)
 		}
 	}
 #	endif
+#ifndef __EMSCRIPTEN__
 	// no process file system => need to parse argv[0]
 	/* should work on most unix or gnu systems */
 	argv_copy[0] = realpath(argv_copy[0], buffer2);
+#endif
 #endif
 
 	setlocale( LC_CTYPE, "" );

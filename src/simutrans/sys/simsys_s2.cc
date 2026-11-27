@@ -9,6 +9,28 @@
 #include <SDL.h>
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+
+static Uint32 last_em_yield_ms = 0;
+
+static inline void emscripten_yield_now(Uint32 delay_ms)
+{
+	last_em_yield_ms = SDL_GetTicks();
+	emscripten_sleep(delay_ms);
+}
+
+static inline void emscripten_yield_if_needed()
+{
+	const Uint32 now = SDL_GetTicks();
+	if (now - last_em_yield_ms >= 16) {
+		last_em_yield_ms = now;
+		emscripten_sleep(0);
+	}
+}
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -359,6 +381,15 @@ bool dr_os_init(const int* parameter)
 resolution dr_query_screen_resolution()
 {
 	resolution res;
+#ifdef __EMSCRIPTEN__
+	int cw = 0, ch = 0;
+	emscripten_get_canvas_element_size("#canvas", &cw, &ch);
+	if (cw > 0 && ch > 0) {
+		res.w = SCREEN_TO_TEX_X(cw);
+		res.h = SCREEN_TO_TEX_Y(ch);
+		return res;
+	}
+#endif
 	SDL_DisplayMode mode;
 	SDL_GetCurrentDisplayMode( 0, &mode );
 	DBG_MESSAGE("dr_query_screen_resolution(SDL2)", "screen resolution width=%d, height=%d", mode.w, mode.h );
@@ -616,6 +647,9 @@ void dr_flush()
 	SDL_RenderCopy( renderer, screen_tx, &rSrc, NULL );
 
 	SDL_RenderPresent( renderer );
+#ifdef __EMSCRIPTEN__
+	emscripten_yield_if_needed();
+#endif
 }
 
 
@@ -1181,6 +1215,11 @@ static void internal_GetEvents()
 void GetEvents()
 {
 	internal_GetEvents();
+#ifdef __EMSCRIPTEN__
+	if (sys_event.type == SIM_NOEVENT) {
+		emscripten_yield_if_needed();
+	}
+#endif
 }
 
 
@@ -1204,7 +1243,11 @@ uint32 dr_time()
 
 void dr_sleep(uint32 usec)
 {
+#ifdef __EMSCRIPTEN__
+	emscripten_yield_now(usec);
+#else
 	SDL_Delay( usec );
+#endif
 }
 
 

@@ -6,6 +6,7 @@
 #ifndef SIMMESG_H
 #define SIMMESG_H
 
+#include <time.h>
 
 #include "simtypes.h"
 #include "gui/gui_theme.h"

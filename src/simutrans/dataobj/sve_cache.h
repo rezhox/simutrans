@@ -11,6 +11,7 @@
 #include "../tpl/stringhashtable_tpl.h"
 
 #include <string>
+#include <time.h>
 
 
 class loadsave_t;
